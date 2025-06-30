@@ -91,7 +91,12 @@ const UserView = () => {
                   <Typography variant="h5" component="div">
                     {item.name} ({item.type})
                   </Typography>
-                  <Typography sx={{ mb: 1.5 }} color="text.secondary">
+                  <Typography
+                    sx={{
+                      mb: 1.5,
+                      color: item.type === 'countdown' && item.remainingTime === 0 ? 'error.main' : 'text.secondary',
+                    }}
+                  >
                     {item.type === 'timer'
                       ? new Date(item.time * 1000).toISOString().substr(11, 8)
                       : new Date(item.remainingTime * 1000).toISOString().substr(11, 8)}
