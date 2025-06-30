@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
+import { v4 as uuidv4 } from 'uuid'; // Import uuid
 import {
   Container,
   Card,
@@ -9,28 +10,78 @@ import {
   Typography,
   Box,
   Grid,
+  TextField,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
 } from '@mui/material';
 
 const socket = io('http://localhost:3001');
 
 const UserView = () => {
   const [timers, setTimers] = useState({});
+  const [userId, setUserId] = useState(null);
+  const [userName, setUserName] = useState('');
+  const [openNameDialog, setOpenNameDialog] = useState(false);
+  const [tempUserName, setTempUserName] = useState('');
+  const [registrationError, setRegistrationError] = useState('');
 
   useEffect(() => {
+    let currentUserId = localStorage.getItem('userId');
+    let currentUserName = localStorage.getItem('userName');
+
+    if (!currentUserId) {
+      currentUserId = uuidv4();
+      localStorage.setItem('userId', currentUserId);
+    }
+    setUserId(currentUserId);
+
+    if (!currentUserName) {
+      setOpenNameDialog(true);
+    } else {
+      setUserName(currentUserName);
+      socket.emit('register-user', { userId: currentUserId, userName: currentUserName });
+    }
+
     socket.on('timers', (timers) => {
       setTimers(timers);
     });
 
+    socket.on('registration-error', (message) => {
+      setRegistrationError(message);
+      setOpenNameDialog(true); // Re-open dialog on error
+    });
+
     return () => {
       socket.off('timers');
+      socket.off('registration-error');
     };
   }, []);
+
+  const handleNameSubmit = () => {
+    if (tempUserName.trim() === '') {
+      setRegistrationError('User name cannot be empty.');
+      return;
+    }
+    localStorage.setItem('userName', tempUserName);
+    setUserName(tempUserName);
+    setOpenNameDialog(false);
+    setRegistrationError('');
+    socket.emit('register-user', { userId, userName: tempUserName });
+  };
+
+  if (!userId) {
+    return <Typography>Loading user...</Typography>;
+  }
 
   return (
     <Container maxWidth="md">
       <Box sx={{ my: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          User View
+          User View ({userName || 'Not Registered'})
         </Typography>
         <Grid container spacing={2}>
           {Object.values(timers).map((timer) => (
@@ -49,6 +100,30 @@ const UserView = () => {
           ))}
         </Grid>
       </Box>
+      <Dialog open={openNameDialog} disableEscapeKeyDown>
+        <DialogTitle>Enter Your Name</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Please enter a name to identify yourself. This name will be visible to the admin.
+          </DialogContentText>
+          <TextField
+            autoFocus
+            margin="dense"
+            id="name"
+            label="Your Name"
+            type="text"
+            fullWidth
+            variant="standard"
+            value={tempUserName}
+            onChange={(e) => setTempUserName(e.target.value)}
+            error={!!registrationError}
+            helperText={registrationError}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleNameSubmit}>Submit</Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

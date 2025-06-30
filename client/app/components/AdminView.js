@@ -12,28 +12,47 @@ import {
   Box,
   Grid,
   IconButton,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import { PlayArrow, Pause, Stop } from '@mui/icons-material';
 
 const socket = io('http://localhost:3001');
+const ADMIN_USER_ID = 'admin'; // Hardcoded admin user ID
 
 const AdminView = () => {
   const [timers, setTimers] = useState({});
   const [newTimerName, setNewTimerName] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [connectedUsers, setConnectedUsers] = useState([]); // To store { userId, userName } objects
 
   useEffect(() => {
-    socket.on('timers', (timers) => {
-      setTimers(timers);
+    socket.emit('register-user', { userId: ADMIN_USER_ID, userName: 'Admin' });
+
+    socket.on('timers', (receivedTimers) => {
+      setTimers(receivedTimers);
+    });
+
+    socket.on('connected-users', (users) => {
+      setConnectedUsers(users);
+      if (!selectedUserId && users.length > 0) {
+        setSelectedUserId(users[0].userId); // Select the first user by default
+      }
     });
 
     return () => {
       socket.off('timers');
+      socket.off('connected-users');
     };
-  }, []);
+  }, [selectedUserId]);
 
   const handleCreateTimer = () => {
-    socket.emit('create-timer', newTimerName);
-    setNewTimerName('');
+    if (newTimerName && selectedUserId) {
+      socket.emit('create-timer', { timerName: newTimerName, userId: selectedUserId });
+      setNewTimerName('');
+    }
   };
 
   const handleStartTimer = (timerId) => {
@@ -52,9 +71,9 @@ const AdminView = () => {
     <Container maxWidth="md">
       <Box sx={{ my: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          Admin View
+          Admin View (User: Admin)
         </Typography>
-        <Box sx={{ mb: 2, display: 'flex', gap: 2 }}>
+        <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
           <TextField
             label="New Timer Name"
             variant="outlined"
@@ -62,6 +81,20 @@ const AdminView = () => {
             onChange={(e) => setNewTimerName(e.target.value)}
             fullWidth
           />
+          <FormControl variant="outlined" sx={{ minWidth: 120 }}>
+            <InputLabel>User</InputLabel>
+            <Select
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              label="User"
+            >
+              {connectedUsers.map((user) => (
+                <MenuItem key={user.userId} value={user.userId}>
+                  {user.userName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <Button
             variant="contained"
             color="primary"
@@ -78,6 +111,9 @@ const AdminView = () => {
                 <CardContent>
                   <Typography variant="h5" component="div">
                     {timer.name}
+                  </Typography>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    User: {timer.userName}
                   </Typography>
                   <Typography sx={{ mb: 1.5 }} color="text.secondary">
                     {new Date(timer.time * 1000).toISOString().substr(11, 8)}

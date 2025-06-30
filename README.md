@@ -8,6 +8,8 @@ This is a real-time timer application with a Next.js frontend and a Node.js/Expr
 *   Start, pause, and stop timers
 *   Real-time updates across all connected clients
 *   Modern Material-UI design
+*   **User Management:** Timers are associated with specific users, and users can set a friendly name.
+*   **Admin View:** An admin user can view all active users and create timers for any specific user.
 
 ## Project Structure
 
