@@ -31,3 +31,8 @@ The `timer-app` is a monorepo with two main components:
 
 ## Current Status
 All changes, including the monorepo setup, Next.js migration, and Material-UI integration, have been committed and pushed to the GitHub repository. The root `README.md` has been updated to reflect these changes and provide updated instructions.
+
+### Recent Enhancements (June 30, 2025)
+- **User-Specific Timers:** Implemented a system where timers are associated with individual users.
+- **User-Friendly Names:** Users are prompted to set a unique, user-friendly name upon their first visit, which is then displayed in both user and admin views.
+- **Enhanced Admin View:** The admin view now displays a list of all connected users by their friendly names and allows the admin to create timers for specific users.
