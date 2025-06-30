@@ -49,15 +49,24 @@ const UserView = () => {
 
     socket.on('active-items', (items) => {
       setActiveItems((prevItems) => {
-        const newItems = { ...prevItems };
+        const newItems = {};
+        // Add/update items from server
         items.forEach((receivedItem) => {
-          if (newItems[receivedItem.id] && newItems[receivedItem.id].type === 'countdown' && newItems[receivedItem.id].isRunning) {
-            // If countdown is already running on client, don't overwrite remainingTime from server
-            newItems[receivedItem.id] = { ...newItems[receivedItem.id], ...receivedItem, remainingTime: newItems[receivedItem.id].remainingTime };
+          if (prevItems[receivedItem.id] && receivedItem.type === 'countdown' && receivedItem.isRunning) {
+            // If countdown is running, preserve client's smoothly updated remainingTime
+            newItems[receivedItem.id] = { ...receivedItem, remainingTime: prevItems[receivedItem.id].remainingTime };
           } else {
             newItems[receivedItem.id] = receivedItem;
           }
         });
+
+        // Remove items that are no longer present on the server
+        Object.keys(prevItems).forEach(itemId => {
+          if (!newItems[itemId]) {
+            delete newItems[itemId];
+          }
+        });
+
         return newItems;
       });
     });
@@ -123,9 +132,13 @@ const UserView = () => {
               <Card>
                 <CardContent>
                   <Typography variant="h5" component="div">
-                    {item.name} ({item.type})
+                    {item.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    ({item.type})
                   </Typography>
                   <Typography
+                    variant="h3"
                     sx={{
                       mb: 1.5,
                       color: item.type === 'countdown' && item.remainingTime <= 0 ? 'error.main' : 'text.secondary',
