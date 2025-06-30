@@ -18,6 +18,7 @@ import {
   MenuItem,
 } from '@mui/material';
 import { PlayArrow, Pause, Stop } from '@mui/icons-material';
+import LinearProgress from '@mui/material/LinearProgress';
 
 const socket = io('http://localhost:3001');
 const ADMIN_USER_ID = 'admin'; // Hardcoded admin user ID
@@ -34,7 +35,18 @@ const AdminView = () => {
     socket.emit('register-user', { userId: ADMIN_USER_ID, userName: 'Admin' });
 
     socket.on('active-items', (receivedItems) => {
-      setActiveItems(receivedItems);
+      setActiveItems((prevItems) => {
+        const newItems = { ...prevItems };
+        receivedItems.forEach((receivedItem) => {
+          if (newItems[receivedItem.id] && newItems[receivedItem.id].type === 'countdown' && newItems[receivedItem.id].isRunning) {
+            // If countdown is already running on client, don't overwrite remainingTime from server
+            newItems[receivedItem.id] = { ...newItems[receivedItem.id], ...receivedItem, remainingTime: newItems[receivedItem.id].remainingTime };
+          } else {
+            newItems[receivedItem.id] = receivedItem;
+          }
+        });
+        return newItems;
+      });
     });
 
     socket.on('connected-users', (users) => {
@@ -44,9 +56,29 @@ const AdminView = () => {
       }
     });
 
+    let animationFrameId;
+
+    const updateProgress = () => {
+      setActiveItems((prevItems) => {
+        const newItems = { ...prevItems };
+        Object.values(newItems).forEach((item) => {
+          if (item.type === 'countdown' && item.isRunning) {
+            const now = Date.now();
+            const elapsed = (now - (item.endTime - item.duration * 1000)) / 1000; // Time elapsed since start
+            item.remainingTime = Math.max(0, item.duration - elapsed);
+          }
+        });
+        return newItems;
+      });
+      animationFrameId = requestAnimationFrame(updateProgress);
+    };
+
+    animationFrameId = requestAnimationFrame(updateProgress);
+
     return () => {
       socket.off('active-items');
       socket.off('connected-users');
+      cancelAnimationFrame(animationFrameId);
     };
   }, [selectedUserId]);
 
@@ -142,18 +174,41 @@ const AdminView = () => {
                   <Typography
                     sx={{
                       mb: 1.5,
-                      color: item.type === 'countdown' && item.remainingTime === 0 ? 'error.main' : 'text.secondary',
+                      color: item.type === 'countdown' && item.remainingTime <= 0 ? 'error.main' : 'text.secondary',
                     }}
                   >
                     {item.type === 'timer'
                       ? new Date(item.time * 1000).toISOString().substr(11, 8)
                       : new Date(item.remainingTime * 1000).toISOString().substr(11, 8)}
                   </Typography>
+                  {item.type === 'countdown' && (
+                    <Box sx={{ width: '100%', mt: 1 }}>
+                      <LinearProgress
+                        variant="determinate"
+                                                value={item.type === 'countdown'
+                          ? item.isRunning
+                            ? Math.max(0, Math.min(100, (item.duration - (item.endTime - Date.now()) / 1000) / item.duration * 100))
+                            : (item.duration - item.remainingTime) / item.duration * 100
+                          : 0}
+                        sx={{
+                          height: 10,
+                          borderRadius: 5,
+                          backgroundColor: 'lightgrey',
+                          '& .MuiLinearProgress-bar': {
+                            backgroundColor:
+                              (item.duration - (item.endTime - Date.now()) / 1000) / item.duration * 100 < 80
+                                ? 'success.main'
+                                : 'warning.main',
+                          },
+                        }}
+                      />
+                    </Box>
+                  )}
                   <Box>
                     <IconButton
                       color="success"
                       onClick={() => handleStartItem(item.id)}
-                      disabled={item.isRunning || (item.type === 'countdown' && item.remainingTime === 0)}
+                      disabled={item.isRunning || (item.type === 'countdown' && item.remainingTime <= 0)}
                     >
                       <PlayArrow />
                     </IconButton>

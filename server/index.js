@@ -92,12 +92,20 @@ io.on('connection', (socket) => {
   });
 
   socket.on('start-item', (itemId) => {
-    activeItems[itemId].isRunning = true;
+    const item = activeItems[itemId];
+    if (item.type === 'countdown') {
+      item.endTime = Date.now() + item.remainingTime * 1000; // Recalculate endTime on start
+    }
+    item.isRunning = true;
     emitAllActiveItems(); // Emit updated active items to all relevant users
   });
 
   socket.on('pause-item', (itemId) => {
-    activeItems[itemId].isRunning = false;
+    const item = activeItems[itemId];
+    if (item.type === 'countdown') {
+      item.remainingTime = Math.max(0, (item.endTime - Date.now()) / 1000); // Capture remainingTime on pause
+    }
+    item.isRunning = false;
     emitAllActiveItems(); // Emit updated active items to all relevant users
   });
 
@@ -123,16 +131,16 @@ setInterval(() => {
       if (item.type === 'timer') {
         item.time++;
       } else if (item.type === 'countdown') {
-        const now = Date.now();
-        item.remainingTime = Math.max(0, Math.floor((item.endTime - now) / 1000));
-        if (item.remainingTime === 0) {
+        // Client-side handles smooth remainingTime updates
+        // Server only stops it when it reaches 0
+        if (item.remainingTime <= 0) {
           item.isRunning = false; // Stop countdown when it reaches 0
         }
       }
     }
   });
   emitAllActiveItems(); // Emit updated active items to all relevant users
-}, 1000);
+}, 100);
 
 server.listen(PORT, () => {
   console.log(`listening on *:${PORT}`);

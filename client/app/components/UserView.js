@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid'; // Import uuid
+import LinearProgress from '@mui/material/LinearProgress';
 import {
   Container,
   Card,
@@ -47,7 +48,18 @@ const UserView = () => {
     }
 
     socket.on('active-items', (items) => {
-      setActiveItems(items);
+      setActiveItems((prevItems) => {
+        const newItems = { ...prevItems };
+        items.forEach((receivedItem) => {
+          if (newItems[receivedItem.id] && newItems[receivedItem.id].type === 'countdown' && newItems[receivedItem.id].isRunning) {
+            // If countdown is already running on client, don't overwrite remainingTime from server
+            newItems[receivedItem.id] = { ...newItems[receivedItem.id], ...receivedItem, remainingTime: newItems[receivedItem.id].remainingTime };
+          } else {
+            newItems[receivedItem.id] = receivedItem;
+          }
+        });
+        return newItems;
+      });
     });
 
     socket.on('registration-error', (message) => {
@@ -55,9 +67,31 @@ const UserView = () => {
       setOpenNameDialog(true); // Re-open dialog on error
     });
 
+    let animationFrameId;
+
+    const updateProgress = () => {
+      setActiveItems((prevItems) => {
+        const newItems = { ...prevItems };
+        Object.values(newItems).forEach((item) => {
+          if (item.type === 'countdown' && item.isRunning) {
+            const now = Date.now();
+            const elapsed = (now - (item.endTime - item.duration * 1000)) / 1000; // Time elapsed since start
+            item.remainingTime = Math.max(0, item.duration - elapsed);
+          } else if (item.type === 'countdown' && !item.isRunning && item.remainingTime <= 0) {
+            item.remainingTime = 0; // Ensure it stays at 0 if already finished
+          }
+        });
+        return newItems;
+      });
+      animationFrameId = requestAnimationFrame(updateProgress);
+    };
+
+    animationFrameId = requestAnimationFrame(updateProgress);
+
     return () => {
       socket.off('active-items');
       socket.off('registration-error');
+      cancelAnimationFrame(animationFrameId);
     };
   }, []);
 
@@ -94,13 +128,36 @@ const UserView = () => {
                   <Typography
                     sx={{
                       mb: 1.5,
-                      color: item.type === 'countdown' && item.remainingTime === 0 ? 'error.main' : 'text.secondary',
+                      color: item.type === 'countdown' && item.remainingTime <= 0 ? 'error.main' : 'text.secondary',
                     }}
                   >
                     {item.type === 'timer'
                       ? new Date(item.time * 1000).toISOString().substr(11, 8)
                       : new Date(item.remainingTime * 1000).toISOString().substr(11, 8)}
                   </Typography>
+                  {item.type === 'countdown' && (
+                    <Box sx={{ width: '100%', mt: 1 }}>
+                      <LinearProgress
+                        variant="determinate"
+                        value={item.type === 'countdown'
+                          ? item.isRunning
+                            ? Math.max(0, Math.min(100, (item.duration - (item.endTime - Date.now()) / 1000) / item.duration * 100))
+                            : (item.duration - item.remainingTime) / item.duration * 100
+                          : 0}
+                        sx={{
+                          height: 10,
+                          borderRadius: 5,
+                          backgroundColor: 'lightgrey',
+                          '& .MuiLinearProgress-bar': {
+                            backgroundColor:
+                              (item.duration - (item.endTime - Date.now()) / 1000) / item.duration * 100 < 80
+                                ? 'success.main'
+                                : 'warning.main',
+                          },
+                        }}
+                      />
+                    </Box>
+                  )}
                 </CardContent>
               </Card>
             </Grid>

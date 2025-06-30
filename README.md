@@ -4,7 +4,7 @@ This is a real-time timer application with a Next.js frontend and a Node.js/Expr
 
 ## Features
 
-*   Create new timers and countdowns
+*   Create new timers and countdowns with a color-coded progress bar and visual cues for completion status.
 *   Start, pause, and stop timers
 *   Real-time updates across all connected clients
 *   Modern Material-UI design

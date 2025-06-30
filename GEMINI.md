@@ -36,4 +36,4 @@ All changes, including the monorepo setup, Next.js migration, and Material-UI in
 - **User-Specific Timers:** Implemented a system where timers are associated with individual users.
 - **User-Friendly Names:** Users are prompted to set a unique, user-friendly name upon their first visit, which is then displayed in both user and admin views.
 - **Enhanced Admin View:** The admin view now displays a list of all connected users by their friendly names and allows the admin to create timers for specific users.
-- **Countdown Functionality:** Added the ability to create and manage countdowns in addition to timers.
+- **Countdown Functionality:** Added the ability to create and manage countdowns in addition to timers, including a color-coded progress bar and visual cues for completion status.
