@@ -23,16 +23,18 @@ const socket = io('http://localhost:3001');
 const ADMIN_USER_ID = 'admin'; // Hardcoded admin user ID
 
 const AdminView = () => {
-  const [timers, setTimers] = useState({});
-  const [newTimerName, setNewTimerName] = useState('');
+  const [activeItems, setActiveItems] = useState({});
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemType, setNewItemType] = useState('timer'); // 'timer' or 'countdown'
+  const [countdownDuration, setCountdownDuration] = useState(60); // Default to 60 seconds
   const [selectedUserId, setSelectedUserId] = useState('');
   const [connectedUsers, setConnectedUsers] = useState([]); // To store { userId, userName } objects
 
   useEffect(() => {
     socket.emit('register-user', { userId: ADMIN_USER_ID, userName: 'Admin' });
 
-    socket.on('timers', (receivedTimers) => {
-      setTimers(receivedTimers);
+    socket.on('active-items', (receivedItems) => {
+      setActiveItems(receivedItems);
     });
 
     socket.on('connected-users', (users) => {
@@ -43,28 +45,29 @@ const AdminView = () => {
     });
 
     return () => {
-      socket.off('timers');
+      socket.off('active-items');
       socket.off('connected-users');
     };
   }, [selectedUserId]);
 
-  const handleCreateTimer = () => {
-    if (newTimerName && selectedUserId) {
-      socket.emit('create-timer', { timerName: newTimerName, userId: selectedUserId });
-      setNewTimerName('');
+  const handleCreateItem = () => {
+    if (newItemName && selectedUserId) {
+      socket.emit('create-item', { name: newItemName, type: newItemType, duration: countdownDuration, userId: selectedUserId });
+      setNewItemName('');
+      setCountdownDuration(60); // Reset duration
     }
   };
 
-  const handleStartTimer = (timerId) => {
-    socket.emit('start-timer', timerId);
+  const handleStartItem = (itemId) => {
+    socket.emit('start-item', itemId);
   };
 
-  const handlePauseTimer = (timerId) => {
-    socket.emit('pause-timer', timerId);
+  const handlePauseItem = (itemId) => {
+    socket.emit('pause-item', itemId);
   };
 
-  const handleStopTimer = (timerId) => {
-    socket.emit('stop-timer', timerId);
+  const handleStopItem = (itemId) => {
+    socket.emit('stop-item', itemId);
   };
 
   return (
@@ -75,12 +78,33 @@ const AdminView = () => {
         </Typography>
         <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
           <TextField
-            label="New Timer Name"
+            label="Name"
             variant="outlined"
-            value={newTimerName}
-            onChange={(e) => setNewTimerName(e.target.value)}
+            value={newItemName}
+            onChange={(e) => setNewItemName(e.target.value)}
             fullWidth
           />
+          <FormControl variant="outlined" sx={{ minWidth: 120 }}>
+            <InputLabel>Type</InputLabel>
+            <Select
+              value={newItemType}
+              onChange={(e) => setNewItemType(e.target.value)}
+              label="Type"
+            >
+              <MenuItem value="timer">Timer</MenuItem>
+              <MenuItem value="countdown">Countdown</MenuItem>
+            </Select>
+          </FormControl>
+          {newItemType === 'countdown' && (
+            <TextField
+              label="Duration (seconds)"
+              variant="outlined"
+              type="number"
+              value={countdownDuration}
+              onChange={(e) => setCountdownDuration(Number(e.target.value))}
+              sx={{ minWidth: 150 }}
+            />
+          )}
           <FormControl variant="outlined" sx={{ minWidth: 120 }}>
             <InputLabel>User</InputLabel>
             <Select
@@ -98,44 +122,46 @@ const AdminView = () => {
           <Button
             variant="contained"
             color="primary"
-            onClick={handleCreateTimer}
+            onClick={handleCreateItem}
             sx={{ whiteSpace: 'nowrap' }}
           >
-            Create Timer
+            Create Item
           </Button>
         </Box>
         <Grid container spacing={2}>
-          {Object.values(timers).map((timer) => (
-            <Grid item xs={12} sm={6} md={4} key={timer.id}>
+          {Object.values(activeItems).map((item) => (
+            <Grid item xs={12} sm={6} md={4} key={item.id}>
               <Card>
                 <CardContent>
                   <Typography variant="h5" component="div">
-                    {timer.name}
+                    {item.name} ({item.type})
                   </Typography>
                   <Typography variant="subtitle2" color="text.secondary">
-                    User: {timer.userName}
+                    User: {item.userName}
                   </Typography>
                   <Typography sx={{ mb: 1.5 }} color="text.secondary">
-                    {new Date(timer.time * 1000).toISOString().substr(11, 8)}
+                    {item.type === 'timer'
+                      ? new Date(item.time * 1000).toISOString().substr(11, 8)
+                      : new Date(item.remainingTime * 1000).toISOString().substr(11, 8)}
                   </Typography>
                   <Box>
                     <IconButton
                       color="success"
-                      onClick={() => handleStartTimer(timer.id)}
-                      disabled={timer.isRunning}
+                      onClick={() => handleStartItem(item.id)}
+                      disabled={item.isRunning || (item.type === 'countdown' && item.remainingTime === 0)}
                     >
                       <PlayArrow />
                     </IconButton>
                     <IconButton
                       color="warning"
-                      onClick={() => handlePauseTimer(timer.id)}
-                      disabled={!timer.isRunning}
+                      onClick={() => handlePauseItem(item.id)}
+                      disabled={!item.isRunning}
                     >
                       <Pause />
                     </IconButton>
                     <IconButton
                       color="error"
-                      onClick={() => handleStopTimer(timer.id)}
+                      onClick={() => handleStopItem(item.id)}
                     >
                       <Stop />
                     </IconButton>

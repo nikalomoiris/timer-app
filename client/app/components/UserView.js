@@ -22,7 +22,7 @@ import {
 const socket = io('http://localhost:3001');
 
 const UserView = () => {
-  const [timers, setTimers] = useState({});
+  const [activeItems, setActiveItems] = useState({});
   const [userId, setUserId] = useState(null);
   const [userName, setUserName] = useState('');
   const [openNameDialog, setOpenNameDialog] = useState(false);
@@ -46,8 +46,8 @@ const UserView = () => {
       socket.emit('register-user', { userId: currentUserId, userName: currentUserName });
     }
 
-    socket.on('timers', (timers) => {
-      setTimers(timers);
+    socket.on('active-items', (items) => {
+      setActiveItems(items);
     });
 
     socket.on('registration-error', (message) => {
@@ -56,7 +56,7 @@ const UserView = () => {
     });
 
     return () => {
-      socket.off('timers');
+      socket.off('active-items');
       socket.off('registration-error');
     };
   }, []);
@@ -84,15 +84,17 @@ const UserView = () => {
           User View ({userName || 'Not Registered'})
         </Typography>
         <Grid container spacing={2}>
-          {Object.values(timers).map((timer) => (
-            <Grid item xs={12} sm={6} md={4} key={timer.id}>
+          {Object.values(activeItems).map((item) => (
+            <Grid item xs={12} sm={6} md={4} key={item.id}>
               <Card>
                 <CardContent>
                   <Typography variant="h5" component="div">
-                    {timer.name}
+                    {item.name} ({item.type})
                   </Typography>
                   <Typography sx={{ mb: 1.5 }} color="text.secondary">
-                    {new Date(timer.time * 1000).toISOString().substr(11, 8)}
+                    {item.type === 'timer'
+                      ? new Date(item.time * 1000).toISOString().substr(11, 8)
+                      : new Date(item.remainingTime * 1000).toISOString().substr(11, 8)}
                   </Typography>
                 </CardContent>
               </Card>

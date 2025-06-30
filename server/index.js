@@ -13,35 +13,35 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3001;
 
-let timers = {};
+let activeItems = {};
 const ADMIN_USER_ID = 'admin'; // Hardcoded admin user ID for now
 
 let connectedUsers = {}; // Map userId to { userId, userName }
 let userNamesToIds = {}; // Map userName to userId for uniqueness check
 
-// Helper function to send timers to a specific user
-const sendTimersToUser = (socket) => {
+// Helper function to send active items to a specific user
+const sendActiveItemsToUser = (socket) => {
   if (!socket.userId) return; // User not registered yet
 
-  let timersToSend;
+  let itemsToSend;
   if (socket.userId === ADMIN_USER_ID) {
-    timersToSend = Object.values(timers).map(timer => ({
-      ...timer,
-      userName: connectedUsers[timer.userId] ? connectedUsers[timer.userId].userName : 'Unknown User'
-    })); // Admin sees all timers with user names
+    itemsToSend = Object.values(activeItems).map(item => ({
+      ...item,
+      userName: connectedUsers[item.userId] ? connectedUsers[item.userId].userName : 'Unknown User'
+    })); // Admin sees all items with user names
   } else {
-    timersToSend = Object.values(timers).filter(timer => timer.userId === socket.userId).map(timer => ({
-      ...timer,
-      userName: connectedUsers[timer.userId] ? connectedUsers[timer.userId].userName : 'Unknown User'
+    itemsToSend = Object.values(activeItems).filter(item => item.userId === socket.userId).map(item => ({
+      ...item,
+      userName: connectedUsers[item.userId] ? connectedUsers[item.userId].userName : 'Unknown User'
     }));
   }
-  socket.emit('timers', timersToSend);
+  socket.emit('active-items', itemsToSend);
 };
 
-// Helper function to emit timers to all connected clients
-const emitAllTimers = () => {
+// Helper function to emit active items to all connected clients
+const emitAllActiveItems = () => {
   io.sockets.sockets.forEach(socket => {
-    sendTimersToUser(socket);
+    sendActiveItemsToUser(socket);
   });
   // Also emit the list of connected users to the admin
   const usersArray = Object.values(connectedUsers);
@@ -65,34 +65,45 @@ io.on('connection', (socket) => {
     connectedUsers[userId] = { userId, userName };
     userNamesToIds[userName] = userId;
 
-    sendTimersToUser(socket); // Send initial timers to the newly registered user
-    emitAllTimers(); // Notify all clients (especially admin) about new user
+    sendActiveItemsToUser(socket); // Send initial active items to the newly registered user
+    emitAllActiveItems(); // Notify all clients (especially admin) about new user
   });
 
-  socket.on('create-timer', ({ timerName, userId }) => {
+  socket.on('create-item', ({ name, type, duration, userId }) => {
     const actualUserId = userId || socket.userId; // Use provided userId or socket's userId
     if (!actualUserId) {
-      console.error('No userId provided for timer creation');
+      console.error('No userId provided for item creation');
       return;
     }
-    const newTimer = { id: Date.now(), name: timerName, time: 0, isRunning: false, userId: actualUserId };
-    timers[newTimer.id] = newTimer;
-    emitAllTimers(); // Emit updated timers to all relevant users
+
+    let newItem;
+    if (type === 'timer') {
+      newItem = { id: Date.now(), name, type, time: 0, isRunning: false, userId: actualUserId };
+    } else if (type === 'countdown') {
+      const endTime = Date.now() + duration * 1000; // duration in seconds
+      newItem = { id: Date.now(), name, type, duration, endTime, remainingTime: duration, isRunning: false, userId: actualUserId };
+    } else {
+      console.error('Unknown item type:', type);
+      return;
+    }
+
+    activeItems[newItem.id] = newItem;
+    emitAllActiveItems(); // Emit updated active items to all relevant users
   });
 
-  socket.on('start-timer', (timerId) => {
-    timers[timerId].isRunning = true;
-    emitAllTimers(); // Emit updated timers to all relevant users
+  socket.on('start-item', (itemId) => {
+    activeItems[itemId].isRunning = true;
+    emitAllActiveItems(); // Emit updated active items to all relevant users
   });
 
-  socket.on('pause-timer', (timerId) => {
-    timers[timerId].isRunning = false;
-    emitAllTimers(); // Emit updated timers to all relevant users
+  socket.on('pause-item', (itemId) => {
+    activeItems[itemId].isRunning = false;
+    emitAllActiveItems(); // Emit updated active items to all relevant users
   });
 
-  socket.on('stop-timer', (timerId) => {
-    delete timers[timerId];
-    emitAllTimers(); // Emit updated timers to all relevant users
+  socket.on('stop-item', (itemId) => {
+    delete activeItems[itemId];
+    emitAllActiveItems(); // Emit updated active items to all relevant users
   });
 
   socket.on('disconnect', () => {
@@ -100,18 +111,27 @@ io.on('connection', (socket) => {
     if (socket.userId) {
       delete userNamesToIds[connectedUsers[socket.userId].userName];
       delete connectedUsers[socket.userId];
-      emitAllTimers(); // Notify all clients (especially admin) about user disconnection
+      emitAllActiveItems(); // Notify all clients (especially admin) about user disconnection
     }
   });
 });
 
 setInterval(() => {
-  Object.keys(timers).forEach((timerId) => {
-    if (timers[timerId].isRunning) {
-      timers[timerId].time++;
+  Object.keys(activeItems).forEach((itemId) => {
+    const item = activeItems[itemId];
+    if (item.isRunning) {
+      if (item.type === 'timer') {
+        item.time++;
+      } else if (item.type === 'countdown') {
+        const now = Date.now();
+        item.remainingTime = Math.max(0, Math.floor((item.endTime - now) / 1000));
+        if (item.remainingTime === 0) {
+          item.isRunning = false; // Stop countdown when it reaches 0
+        }
+      }
     }
   });
-  emitAllTimers(); // Emit updated timers to all relevant users
+  emitAllActiveItems(); // Emit updated active items to all relevant users
 }, 1000);
 
 server.listen(PORT, () => {
