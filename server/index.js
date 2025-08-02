@@ -49,28 +49,29 @@ const emitAllActiveItems = () => {
 };
 
 io.on('connection', (socket) => {
-  console.log('a user connected');
+  console.log(`[Socket.IO] Connection established: ${socket.id}`);
 
   socket.on('register-user', ({ userId, userName }) => {
+    console.log(`[Socket.IO] Event: register-user, UserID: ${userId}, UserName: ${userName}`);
     if (userNamesToIds[userName] && userNamesToIds[userName] !== userId) {
-      // User name already taken by another user
+      console.warn(`[Socket.IO] Registration failed for ${userName}: name already taken.`);
       socket.emit('registration-error', 'User name already taken.');
       return;
     }
 
     socket.userId = userId;
-    socket.userName = userName; // Store userName on socket for easy access
-    socket.join(userId); // Join a room specific to the user ID
+    socket.userName = userName;
+    socket.join(userId);
 
     connectedUsers[userId] = { userId, userName };
     userNamesToIds[userName] = userId;
 
-    sendActiveItemsToUser(socket); // Send initial active items to the newly registered user
-    emitAllActiveItems(); // Notify all clients (especially admin) about new user
+    sendActiveItemsToUser(socket);
+    emitAllActiveItems();
   });
 
   socket.on('create-item', ({ name, type, duration, userId }) => {
-    const actualUserId = userId || socket.userId; // Use provided userId or socket's userId
+    const actualUserId = userId || socket.userId;
     if (!actualUserId) {
       console.error('No userId provided for item creation');
       return;
@@ -78,69 +79,67 @@ io.on('connection', (socket) => {
 
     let newItem;
     if (type === 'timer') {
-      newItem = { id: Date.now(), name, type, time: 0, isRunning: false, userId: actualUserId };
+      // baseTime stores the total elapsed time in ms when paused.
+      // startTime stores the timestamp of the last time it was started.
+      newItem = { id: Date.now(), name, type, userId: actualUserId, isRunning: false, baseTime: 0, startTime: 0 };
     } else if (type === 'countdown') {
-      const endTime = Date.now() + duration * 1000; // duration in seconds
-      newItem = { id: Date.now(), name, type, duration, endTime, remainingTime: duration, isRunning: false, userId: actualUserId };
+      newItem = { id: Date.now(), name, type, duration, remainingTime: duration, isRunning: false, userId: actualUserId };
     } else {
       console.error('Unknown item type:', type);
       return;
     }
 
     activeItems[newItem.id] = newItem;
-    emitAllActiveItems(); // Emit updated active items to all relevant users
+    console.log(`[Socket.IO] Item created: ${JSON.stringify(newItem)}`);
+    emitAllActiveItems();
   });
 
   socket.on('start-item', (itemId) => {
+    console.log(`[Socket.IO] Event: start-item, ItemID: ${itemId}`);
     const item = activeItems[itemId];
-    if (item.type === 'countdown') {
-      item.endTime = Date.now() + item.remainingTime * 1000; // Recalculate endTime on start
+    if (!item) return;
+
+    if (item.type === 'timer') {
+      item.startTime = Date.now(); // Set start time to now
+    } else if (item.type === 'countdown') {
+      // Set the definitive end time based on remaining time
+      item.endTime = Date.now() + item.remainingTime * 1000;
     }
     item.isRunning = true;
-    emitAllActiveItems(); // Emit updated active items to all relevant users
+    emitAllActiveItems();
   });
 
   socket.on('pause-item', (itemId) => {
+    console.log(`[Socket.IO] Event: pause-item, ItemID: ${itemId}`);
     const item = activeItems[itemId];
-    if (item.type === 'countdown') {
-      item.remainingTime = Math.max(0, (item.endTime - Date.now()) / 1000); // Capture remainingTime on pause
+    if (!item || !item.isRunning) return;
+
+    if (item.type === 'timer') {
+      // Add the time elapsed since the last start to the base time
+      item.baseTime += Date.now() - item.startTime;
+    } else if (item.type === 'countdown') {
+      // Calculate and store the remaining time
+      item.remainingTime = Math.max(0, (item.endTime - Date.now()) / 1000);
     }
     item.isRunning = false;
-    emitAllActiveItems(); // Emit updated active items to all relevant users
+    emitAllActiveItems();
   });
 
   socket.on('stop-item', (itemId) => {
+    console.log(`[Socket.IO] Event: stop-item, ItemID: ${itemId}`);
     delete activeItems[itemId];
-    emitAllActiveItems(); // Emit updated active items to all relevant users
+    emitAllActiveItems();
   });
 
   socket.on('disconnect', () => {
-    console.log('user disconnected');
-    if (socket.userId) {
+    console.log(`[Socket.IO] Disconnected: ${socket.id}, UserID: ${socket.userId}`);
+    if (socket.userId && connectedUsers[socket.userId]) {
       delete userNamesToIds[connectedUsers[socket.userId].userName];
       delete connectedUsers[socket.userId];
-      emitAllActiveItems(); // Notify all clients (especially admin) about user disconnection
+      emitAllActiveItems();
     }
   });
 });
-
-setInterval(() => {
-  Object.keys(activeItems).forEach((itemId) => {
-    const item = activeItems[itemId];
-    if (item.isRunning) {
-      if (item.type === 'timer') {
-        item.time++;
-      } else if (item.type === 'countdown') {
-        // Client-side handles smooth remainingTime updates
-        // Server only stops it when it reaches 0
-        if (item.remainingTime <= 0) {
-          item.isRunning = false; // Stop countdown when it reaches 0
-        }
-      }
-    }
-  });
-  emitAllActiveItems(); // Emit updated active items to all relevant users
-}, 100);
 
 server.listen(PORT, () => {
   console.log(`listening on *:${PORT}`);

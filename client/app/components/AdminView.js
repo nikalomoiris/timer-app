@@ -32,9 +32,11 @@ const AdminView = () => {
   const [connectedUsers, setConnectedUsers] = useState([]); // To store { userId, userName } objects
 
   useEffect(() => {
+    console.log('[AdminView] Component mounted. Registering admin user.');
     socket.emit('register-user', { userId: ADMIN_USER_ID, userName: 'Admin' });
 
     socket.on('active-items', (receivedItems) => {
+      console.log('[AdminView] Received active-items:', receivedItems);
       setActiveItems((prevItems) => {
         const newItems = {};
         // Add/update items from server
@@ -59,6 +61,7 @@ const AdminView = () => {
     });
 
     socket.on('connected-users', (users) => {
+      console.log('[AdminView] Received connected-users:', users);
       setConnectedUsers(users);
       if (!selectedUserId && users.length > 0) {
         setSelectedUserId(users[0].userId); // Select the first user by default
@@ -71,10 +74,22 @@ const AdminView = () => {
       setActiveItems((prevItems) => {
         const newItems = { ...prevItems };
         Object.values(newItems).forEach((item) => {
-          if (item.type === 'countdown' && item.isRunning) {
-            const now = Date.now();
-            const elapsed = (now - (item.endTime - item.duration * 1000)) / 1000; // Time elapsed since start
-            item.remainingTime = Math.max(0, item.duration - elapsed);
+          if (item.isRunning) {
+            if (item.type === 'timer') {
+              // Calculate elapsed time since start and add to base time
+              const elapsed = Date.now() - item.startTime;
+              item.displayTime = item.baseTime + elapsed;
+            } else if (item.type === 'countdown') {
+              // Calculate remaining time until endTime
+              item.displayTime = Math.max(0, item.endTime - Date.now());
+            }
+          } else {
+            // If paused, display the stored time
+            if (item.type === 'timer') {
+              item.displayTime = item.baseTime;
+            } else if (item.type === 'countdown') {
+              item.displayTime = item.remainingTime * 1000;
+            }
           }
         });
         return newItems;
@@ -93,6 +108,7 @@ const AdminView = () => {
 
   const handleCreateItem = () => {
     if (newItemName && selectedUserId) {
+      console.log(`[AdminView] Creating item: ${newItemName} for user ${selectedUserId}`);
       socket.emit('create-item', { name: newItemName, type: newItemType, duration: countdownDuration, userId: selectedUserId });
       setNewItemName('');
       setCountdownDuration(60); // Reset duration
@@ -183,29 +199,24 @@ const AdminView = () => {
                   <Typography
                     sx={{
                       mb: 1.5,
-                      color: item.type === 'countdown' && item.remainingTime <= 0 ? 'error.main' : 'text.secondary',
+                      fontFamily: 'monospace',
+                      color: item.type === 'countdown' && item.displayTime <= 0 ? 'error.main' : 'text.secondary',
                     }}
                   >
-                    {item.type === 'timer'
-                      ? new Date(item.time * 1000).toISOString().substr(11, 8)
-                      : new Date(item.remainingTime * 1000).toISOString().substr(11, 8)}
+                    {new Date(item.displayTime || 0).toISOString().substr(11, 8)}
                   </Typography>
                   {item.type === 'countdown' && (
                     <Box sx={{ width: '100%', mt: 1 }}>
                       <LinearProgress
                         variant="determinate"
-                                                value={item.type === 'countdown'
-                          ? item.isRunning
-                            ? Math.max(0, Math.min(100, (item.duration - (item.endTime - Date.now()) / 1000) / item.duration * 100))
-                            : (item.duration - item.remainingTime) / item.duration * 100
-                          : 0}
+                        value={item.type === 'countdown' ? ((item.duration * 1000 - (item.displayTime || 0)) / (item.duration * 1000)) * 100 : 0}
                         sx={{
                           height: 10,
                           borderRadius: 5,
                           backgroundColor: 'lightgrey',
                           '& .MuiLinearProgress-bar': {
                             backgroundColor:
-                              (item.duration - (item.endTime - Date.now()) / 1000) / item.duration * 100 < 80
+                              (item.displayTime || 0) / (item.duration * 1000) > 0.2
                                 ? 'success.main'
                                 : 'warning.main',
                           },
